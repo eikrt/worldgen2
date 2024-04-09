@@ -1,14 +1,93 @@
 use crate::math::dist;
 use lazy_static::lazy_static;
 use noise::{NoiseFn, Perlin};
+use rand::prelude::SliceRandom;
 use rand::Rng;
 use rayon::prelude::*;
+use std::collections::HashMap;
 lazy_static! {
-    pub static ref WORLD_SIZE: u32 = 8;
+    pub static ref WORLD_SIZE: u32 = 16;
     pub static ref CHUNK_SIZE: u32 = 128;
     pub static ref TILE_SIZE: u32 = 1;
     pub static ref NOISE_SCALE: f64 = 64.0;
     pub static ref VICINITY_DIST: i32 = 4;
+    pub static ref HUMAN_NAMES_F: Vec<String> = vec![
+        "Kirsika".to_string(),
+        "Markus".to_string(),
+        "Annika".to_string(),
+        "Maris".to_string()
+    ];
+    pub static ref HUMAN_NAMES_M: Vec<String> = vec![
+        "Hans".to_string(),
+        "Sten".to_string(),
+        "Markus".to_string(),
+        "Maris".to_string(),
+        "Karl".to_string()
+    ];
+    pub static ref GENDERS: Vec<Gender> = vec![Gender::Male, Gender::Female];
+}
+#[derive(Clone)]
+pub struct Tasks {
+    build: (u8, bool),
+    fight: (u8, bool),
+    animal_husbandry: (u8, bool),
+    industry: (u8, bool),
+    farm: (u8, bool),
+    oil_rig: (u8, bool),
+}
+impl Tasks {
+    pub fn new() -> Tasks {
+        Tasks {
+            build: (1, true),
+            fight: (0, true),
+            animal_husbandry: (0, true),
+            industry: (0, true),
+            farm: (0, true),
+            oil_rig: (0, true),
+        }
+    }
+}
+#[derive(Clone, PartialEq)]
+pub enum Gender {
+    Male,
+    Female,
+    Other,
+}
+pub fn gen_human_name(faction: Faction, gender: &Gender) -> String {
+    match gender {
+        Gender::Male => HUMAN_NAMES_M
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+            .to_string(),
+        Gender::Female => HUMAN_NAMES_M
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+            .to_string(),
+        Gender::Other => HUMAN_NAMES_M
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+            .to_string(),
+    }
+}
+#[derive(Hash, Eq, PartialEq, Clone)]
+pub enum Item {
+    Bread,
+    Coin,
+}
+#[derive(Clone)]
+pub struct Inventory {
+    items: HashMap<Item, i32>,
+}
+impl Inventory {
+    pub fn new() -> Inventory {
+        Inventory {
+            items: HashMap::new(),
+        }
+    }
+    pub fn get_coins(&self) -> i32 {
+        let count = self.items.get(&Item::Coin).unwrap_or(&0);
+        *count
+    }
 }
 #[derive(Clone)]
 pub struct Stats {
@@ -18,9 +97,15 @@ pub struct Stats {
     intelligence: u8,
     agility: u8,
 }
-#[derive(Clone)]
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
 pub enum Faction {
     Empty,
+    Hiisi,
+    Virumaa,
+    Pohjola,
+    Tapiola,
+    Kalevala,
+    Novgorod,
 }
 #[derive(Clone)]
 pub struct Personality {
@@ -39,8 +124,8 @@ impl Personality {
 }
 #[derive(Clone)]
 pub struct Alignment {
-    faction: Faction,
-    personality: Personality,
+    pub faction: Faction,
+    pub personality: Personality,
 }
 impl Alignment {
     pub fn new() -> Alignment {
@@ -86,6 +171,7 @@ pub enum Status {
 #[derive(Clone)]
 pub enum TileType {
     Grass,
+    WoodenWall,
 }
 #[derive(Clone)]
 pub enum EntityType {
@@ -129,6 +215,10 @@ pub struct Entity {
     pub status: Status,
     pub index: usize,
     pub alignment: Alignment,
+    pub inventory: Inventory,
+    pub name: String,
+    pub gender: Gender,
+    pub tasks: Tasks,
 }
 impl Entity {
     pub fn new(index: usize) -> Entity {
@@ -138,7 +228,11 @@ impl Entity {
             stats: Stats::new(),
             status: Status::Idle,
             alignment: Alignment::new(),
+            inventory: Inventory::new(),
             index: index,
+            name: "".to_string(),
+            gender: Gender::Female,
+            tasks: Tasks::new(),
         }
     }
     pub fn from(
@@ -147,6 +241,8 @@ impl Entity {
         etype: EntityType,
         stats: Stats,
         alignment: Alignment,
+        name: String,
+        gender: Gender,
     ) -> Entity {
         Entity {
             coords: coords,
@@ -155,6 +251,10 @@ impl Entity {
             status: Status::Idle,
             index: index,
             alignment: alignment,
+            inventory: Inventory::new(),
+            name: name,
+            gender: gender,
+            tasks: Tasks::new(),
         }
     }
     pub fn resolve(&mut self, step_increment: i32) {
@@ -170,6 +270,9 @@ impl Entity {
                 self.stats.health = 0;
             }
         }
+        // resolve tasks
+        //
+        if self.tasks.build.1 {}
     }
     pub fn resolve_against(&mut self, other: &mut Entity, step_increment: i32) {
         let mut rng = rand::thread_rng();
@@ -193,6 +296,7 @@ pub struct Tile {
     pub height: i32,
     pub ttype: TileType,
     pub holds: Option<Entity>,
+    pub designed: Option<TileType>,
 }
 
 impl Tile {
@@ -211,6 +315,7 @@ impl Tile {
             height,
             ttype,
             holds,
+            designed: None,
         }
     }
 }
@@ -263,9 +368,36 @@ impl Chunk {
         let mut rng = rand::thread_rng();
         let mut tiles: Vec<Tile> = vec![];
         let mut entities: Vec<Entity> = vec![];
+        let fac_perlin = Perlin::new(seed);
         let perlin = Perlin::new(seed);
         let perlin2 = Perlin::new(seed + 1);
         let perlin3 = Perlin::new(seed + 2);
+
+        let mut discard_entities = false;
+        let mut faction = &Faction::Empty;
+        if fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) > 0.0
+            && fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) < 0.1
+        {
+            faction = &Faction::Novgorod;
+        } else if fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) > 0.1
+            && fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) < 0.2
+        {
+            faction = &Faction::Virumaa;
+        } else if fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) > 0.2
+            && fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) < 0.3
+        {
+            faction = &Faction::Kalevala;
+        } else if fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) > 0.3
+            && fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) < 0.4
+        {
+            faction = &Faction::Tapiola;
+        } else if fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) > 0.4
+            && fac_perlin.get([self.coords.x as f64 + 0.1, self.coords.y as f64 + 0.1]) < 0.5
+        {
+            faction = &Faction::Pohjola;
+        } else {
+            discard_entities = true;
+        }
         for c in 0..(*CHUNK_SIZE as i32 * *CHUNK_SIZE as i32) {
             let x = c % (*CHUNK_SIZE as i32) + self.coords.x * *CHUNK_SIZE as i32;
             let y = (c / *CHUNK_SIZE as i32) + self.coords.y * *CHUNK_SIZE as i32;
@@ -276,24 +408,27 @@ impl Chunk {
             ]) * a;
 
             let n2 = perlin2.get([
-                (x as f64) / *NOISE_SCALE + 0.1,
-                (y as f64) / *NOISE_SCALE + 0.1,
+                (x as f64) / *NOISE_SCALE * 2.0 + 0.1,
+                (y as f64) / *NOISE_SCALE * 2.0 + 0.1,
             ]) * a
-                / 2.0;
+                / 8.0;
 
             let n3 = perlin3.get([
-                (x as f64) / *NOISE_SCALE + 0.1,
-                (y as f64) / *NOISE_SCALE + 0.1,
+                (x as f64) / (*NOISE_SCALE * 8.0) + 0.1,
+                (y as f64) / (*NOISE_SCALE * 8.0) + 0.1,
             ]) * a
-                / 3.0;
+                * -8.0;
             let height: i32 = (n1 + n2 + n3 + rng.gen_range(-1.0..1.0)) as i32;
-            if rng.gen_range(0..32) == 1 {
+            let gender = GENDERS.choose(&mut rand::thread_rng()).unwrap();
+            if height > 0 && !discard_entities && rng.gen_range(0..32) == 1 {
                 entities.push(Entity::from(
                     c as usize,
                     Coords::from((x, y)),
                     EntityType::Human,
                     Stats::gen(),
-                    Alignment::from(Faction::Empty),
+                    Alignment::from(faction.clone()),
+                    gen_human_name(faction.clone(), gender),
+                    gender.clone(),
                 ))
             }
             tiles.push(Tile::from(
@@ -314,6 +449,30 @@ impl Chunk {
     }
     pub fn fetch_tile(&self, index: usize) -> &Tile {
         &self.tiles[index]
+    }
+    pub fn inquire_news(&self) -> News {
+        let mut news = vec![];
+        let mut coin_count = 0;
+        self.entities
+            .iter()
+            .map(|e| coin_count += e.inventory.get_coins());
+
+        if coin_count < 10 {
+            news.push("absolute poorness in region x\n".to_string())
+        }
+        News::from(news)
+    }
+}
+#[derive(Clone)]
+pub struct News {
+    pub newscast: Vec<String>,
+}
+impl News {
+    pub fn new() -> News {
+        News { newscast: vec![] }
+    }
+    pub fn from(newscast: Vec<String>) -> News {
+        News { newscast: newscast }
     }
 }
 pub struct World {
