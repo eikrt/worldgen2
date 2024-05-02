@@ -72,10 +72,11 @@ fn main() {
             if chunk.tiles[0].coords.x < camera.coords.x
                 || chunk.tiles[0].coords.y < camera.coords.y
                 || chunk.tiles[chunk.tiles.len() - 1].coords.x
-                    > -camera.coords.x + camera.render_distance_w + *CHUNK_SIZE as i32
-                || chunk.tiles[chunk.tiles.len() - 1].coords.y + *CHUNK_SIZE as i32
-                    > -camera.coords.y
-                        + camera.render_distance_h
+                    > (-camera.coords.x as i32 + camera.render_distance_w + *CHUNK_SIZE as i32)
+                        as f32
+                || chunk.tiles[chunk.tiles.len() - 1].coords.y as i32 + *CHUNK_SIZE as i32
+                    > -camera.coords.y as i32
+                        + camera.render_distance_h as i32
                         + *CHUNK_SIZE as i32
                         + *CHUNK_SIZE as i32
             {

@@ -12,7 +12,7 @@ lazy_static! {
     pub static ref WINDOW_WIDTH: u32 = 1240;
     pub static ref WINDOW_HEIGHT: u32 = 760;
     pub static ref DEFAULT_ZOOM: i32 = 1;
-    pub static ref CAMERA_STEP: i32 = 32;
+    pub static ref CAMERA_STEP: f32 = 32.0;
 }
 #[derive(Clone)]
 pub struct Camera {
@@ -33,8 +33,8 @@ impl Camera {
         }
     }
     pub fn tick(&mut self) {
-        self.ccoords.x = self.coords.x / *CHUNK_SIZE as i32;
-        self.ccoords.y = self.coords.y / *CHUNK_SIZE as i32;
+        self.ccoords.x = self.coords.x / *CHUNK_SIZE as f32;
+        self.ccoords.y = self.coords.y / *CHUNK_SIZE as f32;
     }
 }
 pub fn render_server(
@@ -66,13 +66,13 @@ pub fn render_server(
         if let Ok(r) = rx.try_recv() {
             for message in r {
                 let chunk = message.chunk;
-                if chunk.coords.x as i32 * camera.zoom < (camera.ccoords.x) * camera.zoom
-                    || chunk.coords.y as i32 * camera.zoom < (camera.ccoords.y) * camera.zoom
+                if chunk.coords.x as i32 * camera.zoom < (camera.ccoords.x) as i32 * camera.zoom
+                    || chunk.coords.y as i32 * camera.zoom < (camera.ccoords.y) as i32 * camera.zoom
                     || chunk.coords.x as i32 * camera.zoom
-                        > (camera.ccoords.x + *WINDOW_WIDTH as i32 * *CHUNK_SIZE as i32)
+                        > (camera.ccoords.x as i32 + *WINDOW_WIDTH as i32 * *CHUNK_SIZE as i32)
                             * camera.zoom
                     || chunk.coords.y as i32 * camera.zoom
-                        > (camera.ccoords.y + *WINDOW_HEIGHT as i32 * *CHUNK_SIZE as i32)
+                        > (camera.ccoords.y as i32 + *WINDOW_HEIGHT as i32 * *CHUNK_SIZE as i32)
                             * camera.zoom
                 {
                     continue;
@@ -184,10 +184,10 @@ pub fn render_server(
                                     '#' => {
                                         let _ = canvas.fill_rect(Rect::new(
                                             k2.0 * *TILE_SIZE as i32 * camera.zoom
-                                                + camera.coords.x
+                                                + camera.coords.x as i32
                                                 + index * char_span,
                                             k2.1 * *TILE_SIZE as i32 * camera.zoom
-                                                + camera.coords.y
+                                                + camera.coords.y as i32
                                                 + row * row_span
                                                 + 16
                                                 + i as i32 * row_span,
@@ -218,8 +218,10 @@ pub fn render_server(
                     }
                     canvas.set_draw_color(Color::RGB(color.0, color.1, color.2));
                     let _ = canvas.fill_rect(Rect::new(
-                        m.coords.x * *TILE_SIZE as i32 * camera.zoom + camera.coords.x,
-                        m.coords.y * *TILE_SIZE as i32 * camera.zoom + camera.coords.y,
+                        m.coords.x as i32 * *TILE_SIZE as i32 * camera.zoom
+                            + camera.coords.x as i32,
+                        m.coords.y as i32 * *TILE_SIZE as i32 * camera.zoom
+                            + camera.coords.y as i32,
                         *TILE_SIZE * camera.zoom as u32,
                         *TILE_SIZE * camera.zoom as u32,
                     ));
@@ -231,8 +233,10 @@ pub fn render_server(
                     color.2 = 0;
                     canvas.set_draw_color(Color::RGB(color.0, color.1, color.2));
                     let _ = canvas.fill_rect(Rect::new(
-                        m.coords.x * *TILE_SIZE as i32 * camera.zoom + camera.coords.x,
-                        m.coords.y * *TILE_SIZE as i32 * camera.zoom + camera.coords.y,
+                        m.coords.x as i32 * *TILE_SIZE as i32 * camera.zoom
+                            + camera.coords.x as i32,
+                        m.coords.y as i32 * *TILE_SIZE as i32 * camera.zoom
+                            + camera.coords.y as i32,
                         *TILE_SIZE * camera.zoom as u32,
                         *TILE_SIZE * camera.zoom as u32,
                     ));
@@ -277,8 +281,10 @@ pub fn render_server(
                         }
                     };
                     let _ = canvas.fill_rect(Rect::new(
-                        chunk.coords.x * *CHUNK_SIZE as i32 * camera.zoom + camera.coords.x,
-                        chunk.coords.y * *CHUNK_SIZE as i32 * camera.zoom + camera.coords.y,
+                        chunk.coords.x as i32 * *CHUNK_SIZE as i32 * camera.zoom
+                            + camera.coords.x as i32,
+                        chunk.coords.y as i32 * *CHUNK_SIZE as i32 * camera.zoom
+                            + camera.coords.y as i32,
                         *CHUNK_SIZE * *TILE_SIZE * camera.zoom as u32,
                         *CHUNK_SIZE * *TILE_SIZE * camera.zoom as u32,
                     ));

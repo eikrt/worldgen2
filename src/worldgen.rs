@@ -179,8 +179,8 @@ pub enum EntityType {
 }
 #[derive(Clone)]
 pub struct Coords {
-    pub x: i32,
-    pub y: i32,
+    pub x: f32,
+    pub y: f32,
 }
 
 #[derive(Clone)]
@@ -197,19 +197,20 @@ impl Size {
     }
 }
 impl Coords {
-    pub fn from(coords: (i32, i32)) -> Coords {
+    pub fn from(coords: (f32, f32)) -> Coords {
         Coords {
             x: coords.0,
             y: coords.1,
         }
     }
     pub fn new() -> Coords {
-        Coords { x: 0, y: 0 }
+        Coords { x: 0.0, y: 0.0 }
     }
 }
 #[derive(Clone)]
 pub struct Entity {
     pub coords: Coords,
+    pub vel: (f32, f32),
     pub etype: EntityType,
     pub stats: Stats,
     pub status: Status,
@@ -224,6 +225,7 @@ impl Entity {
     pub fn new(index: usize) -> Entity {
         Entity {
             coords: Coords::new(),
+            vel: (0.0, 0.0),
             etype: EntityType::Human,
             stats: Stats::new(),
             status: Status::Idle,
@@ -238,6 +240,7 @@ impl Entity {
     pub fn from(
         index: usize,
         coords: Coords,
+        vel: (f32, f32),
         etype: EntityType,
         stats: Stats,
         alignment: Alignment,
@@ -247,6 +250,7 @@ impl Entity {
         Entity {
             coords: coords,
             etype: etype,
+            vel: (0.0, 0.0),
             stats: stats,
             status: Status::Idle,
             index: index,
@@ -258,6 +262,11 @@ impl Entity {
         }
     }
     pub fn resolve(&mut self, step_increment: i32) {
+        // movement
+
+        self.coords.x += step_increment as f32 * self.vel.0;
+        self.coords.y += step_increment as f32 * self.vel.0;
+
         if self.stats.hunger > 0 {
             self.stats.hunger -= 1;
         }
@@ -399,8 +408,8 @@ impl Chunk {
             discard_entities = true;
         }
         for c in 0..(*CHUNK_SIZE as i32 * *CHUNK_SIZE as i32) {
-            let x = c % (*CHUNK_SIZE as i32) + self.coords.x * *CHUNK_SIZE as i32;
-            let y = (c / *CHUNK_SIZE as i32) + self.coords.y * *CHUNK_SIZE as i32;
+            let x = c % (*CHUNK_SIZE as i32) + self.coords.x as i32 * *CHUNK_SIZE as i32;
+            let y = (c / *CHUNK_SIZE as i32) + self.coords.y as i32 * *CHUNK_SIZE as i32;
             let a = 2.0;
             let n1 = perlin.get([
                 (x as f64) / *NOISE_SCALE + 0.1,
@@ -423,7 +432,8 @@ impl Chunk {
             if height > 0 && !discard_entities && rng.gen_range(0..32) == 1 {
                 entities.push(Entity::from(
                     c as usize,
-                    Coords::from((x, y)),
+                    Coords::from((x as f32, y as f32)),
+                    (0.0, 0.0),
                     EntityType::Human,
                     Stats::gen(),
                     Alignment::from(faction.clone()),
@@ -432,7 +442,7 @@ impl Chunk {
                 ))
             }
             tiles.push(Tile::from(
-                Coords::from((x, y)),
+                Coords::from((x as f32, y as f32)),
                 c as usize,
                 Size::from((*TILE_SIZE as i32, *TILE_SIZE as i32)),
                 height,
@@ -498,8 +508,8 @@ impl World {
 pub fn worldgen(seed: u32) -> World {
     let mut chunks: Vec<Chunk> = vec![];
     for c in 0..((*WORLD_SIZE * *WORLD_SIZE) as i32) {
-        let x = c % (*WORLD_SIZE as i32);
-        let y = c / *WORLD_SIZE as i32;
+        let x = (c % *WORLD_SIZE as i32) as f32;
+        let y = (c / *WORLD_SIZE as i32) as f32;
         chunks.push(Chunk::from(
             vec![],
             vec![],
